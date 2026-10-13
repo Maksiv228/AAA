@@ -1,0 +1,99 @@
+name: Build PojavLauncher
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout PojavLauncher
+        uses: actions/checkout@v4
+        with:
+          repository: PojavLauncherTeam/PojavLauncher
+          ref: v3_openjdk
+          submodules: recursive
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Get LTW
+        run: |
+          cd app_pojavlauncher/libs
+          wget -q https://github.com/PojavLauncherTeam/LTW/releases/latest/download/ltw-release.aar
+
+      - name: Get JRE 8
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: PojavLauncherTeam/android-openjdk-build-multiarch
+          workflow: build.yml
+          branch: buildjre8
+          name: jre8-pojav
+          workflow_conclusion: success
+          path: app_pojavlauncher/src/main/assets/components/jre
+
+      - name: Get JRE 17
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: PojavLauncherTeam/android-openjdk-build-multiarch
+          workflow: build.yml
+          branch: buildjre17-21
+          name: jre17-pojav
+          workflow_conclusion: success
+          path: app_pojavlauncher/src/main/assets/components/jre-new
+
+      - name: Get JRE 21
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          repo: PojavLauncherTeam/android-openjdk-build-multiarch
+          workflow: build.yml
+          branch: buildjre17-21
+          name: jre21-pojav
+          workflow_conclusion: success
+          path: app_pojavlauncher/src/main/assets/components/jre-21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11"
+
+      - name: Build JRE JAR files
+        run: |
+          ./scripts/languagelist_updater.sh
+          mkdir -p out
+          gradle :jre_lwjgl3glfw:build --no-daemon
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build debug APK
+        run: |
+          gradle :app_pojavlauncher:assembleDebug --no-daemon
+          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/PojavLauncher-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PojavLauncher-debug
+          path: out/PojavLauncher-debug.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: PojavLauncher (сборка ${{ github.run_number }})
+          body: Debug-сборка PojavLauncher из PojavLauncherTeam/PojavLauncher (ветка v3_openjdk) со встроенными JRE 8, 17 и 21.
+          files: out/PojavLauncher-debug.apk
+          make_latest: true
