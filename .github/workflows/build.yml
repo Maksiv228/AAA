@@ -30,38 +30,29 @@ jobs:
           cd app_pojavlauncher/libs
           wget -q https://github.com/PojavLauncherTeam/LTW/releases/latest/download/ltw-release.aar
 
-      - name: Get JRE 8
-        uses: dawidd6/action-download-artifact@v9
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          repo: PojavLauncherTeam/android-openjdk-build-multiarch
-          workflow: build.yml
-          branch: buildjre8
-          name: jre8-pojav
-          workflow_conclusion: success
-          path: app_pojavlauncher/src/main/assets/components/jre
-
-      - name: Get JRE 17
-        uses: dawidd6/action-download-artifact@v9
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          repo: PojavLauncherTeam/android-openjdk-build-multiarch
-          workflow: build.yml
-          branch: buildjre17-21
-          name: jre17-pojav
-          workflow_conclusion: success
-          path: app_pojavlauncher/src/main/assets/components/jre-new
-
-      - name: Get JRE 21
-        uses: dawidd6/action-download-artifact@v9
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          repo: PojavLauncherTeam/android-openjdk-build-multiarch
-          workflow: build.yml
-          branch: buildjre17-21
-          name: jre21-pojav
-          workflow_conclusion: success
-          path: app_pojavlauncher/src/main/assets/components/jre-21
+      # Сборки JRE в android-openjdk-build-multiarch удалены по сроку хранения (проект заброшен),
+      # поэтому берём готовые JRE из последнего официального APK PojavLauncher.
+      - name: Get JREs from the latest official release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/rel && cd /tmp/rel
+          gh release download --repo PojavLauncherTeam/PojavLauncher --pattern "*.apk"
+          ls -la
+          APK=$(ls -S *.apk | head -1)
+          echo "Берём JRE из $APK"
+          unzip -q -o "$APK" "assets/components/*" -d extracted
+          ls -la extracted/assets/components
+          cd "$GITHUB_WORKSPACE"
+          for c in jre jre-new jre-21; do
+            if [ -d "/tmp/rel/extracted/assets/components/$c" ]; then
+              rm -rf "app_pojavlauncher/src/main/assets/components/$c"
+              cp -r "/tmp/rel/extracted/assets/components/$c" "app_pojavlauncher/src/main/assets/components/$c"
+              echo "OK: $c"; ls "app_pojavlauncher/src/main/assets/components/$c"
+            else
+              echo "::warning::В официальном APK нет компонента $c"
+            fi
+          done
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -94,6 +85,6 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: PojavLauncher (сборка ${{ github.run_number }})
-          body: Debug-сборка PojavLauncher из PojavLauncherTeam/PojavLauncher (ветка v3_openjdk) со встроенными JRE 8, 17 и 21.
+          body: Debug-сборка PojavLauncher из PojavLauncherTeam/PojavLauncher (ветка v3_openjdk) со встроенными JRE из официального релиза.
           files: out/PojavLauncher-debug.apk
           make_latest: true
